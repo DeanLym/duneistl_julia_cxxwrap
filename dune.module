@@ -1,0 +1,10 @@
+################################
+# Dune module information file #
+################################
+
+#Name of the module
+Module: libduneistl-julia
+Version: 0.1.0
+Maintainer: yiminliu1992@gmail.com
+#depending on
+Depends: dune-common dune-istl
