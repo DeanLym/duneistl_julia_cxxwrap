@@ -12,11 +12,12 @@
 #include "jlcxx/jlcxx.hpp"
 
 enum class SolverType {BICGSTAB, RestartedGMRes};
+enum class PreconditionerType {ILU};
 
 using namespace std;
 
 template <class T, int BS>
-class DUNE_ISTL_Solver{
+class DuneIstlSolver{
 public:
     typedef T type;
     using VectorBlock = Dune::FieldVector<T,BS>;
@@ -35,14 +36,15 @@ public:
     using SeqILU = Dune::SeqILU<BCRSMat, BVector, BVector>;
 
 
-    DUNE_ISTL_Solver(const int n)
+    DuneIstlSolver(const int n)
         : n_(n)
         , solver_type_(SolverType::BICGSTAB)
         , target_reduction_(0.01)
         , max_iter_(50)
         , verbose_(0)
         , gmres_restart_(5)
-        , prec_relax_(1.2)
+        , preconditioner_type_(PreconditionerType::ILU)
+        , preconditioner_relax_(1.2)
         , ilu_n_(0)
         , ilu_resort_(true)
         , tmp_(0)
@@ -53,19 +55,30 @@ public:
         x_ = std::make_unique<BVector>(n);
     }
 
-    int greet(){std::cout << "Welcome to the DUNE ISTL CxxWrapper." << std::endl; return 1;};
+    void greet(){std::cout << "Welcome to the DUNE ISTL CxxWrapper." << std::endl;};
 
-    int print_matrix(){
-        Dune::printmatrix(std::cout, *mat_, "random", "row");
-        return 1;
+    void print_matrix(){
+        if (n_ > 100)
+            std::cout << "Printing large matrix (n>100) is disabled." << std::endl; 
+        else
+            Dune::printmatrix(std::cout, *mat_, "random", "");
     }
     
-    int print_rhs(){
-        Dune::printvector(std::cout, *rhs_, "rhs", "row");
-        return 1;
+    void print_rhs(){
+        if (n_ > 100)
+            std::cout << "Printing large vector (n>100) is disabled." << std::endl; 
+        else
+            Dune::printvector(std::cout, *rhs_, "rhs", "");
     }
 
-    int construct_matrix(int nnz, int* row_size, int* BI, int* BJ){
+    void print_x(){
+        if (n_ > 100)
+            std::cout << "Printing large vector (n>100) is disabled." << std::endl; 
+        else
+            Dune::printvector(std::cout, *x_, "x", "");
+    }
+
+    void construct_matrix(int nnz, int* row_size, int* BI, int* BJ){
         for(int i=0; i<n_; i++)
             mat_->setrowsize(i,row_size[i]);
         mat_->endrowsizes();
@@ -81,27 +94,64 @@ public:
             BJ_[i] = BJ[i];
         }
         mat_->endindices();
-        return 1;
     }
 
-    int set_value_matrix(int I, int J, T* value){
-        for(int k=0; k<nnz_; k++){
-            (*mat_)[BI_[k]][BJ_[k]][I][J] = value[k];
+    void add_value_matrix(int nn, int* BI, int* BJ, int I, int J, T* value){
+        for(int k=0; k<nn; k++){
+            (*mat_)[BI[k]][BJ[k]][I][J] += value[k];
         }
-        return 1;
     }
 
-    int set_value_rhs(int I, T* value){
-        for(int k=0; k<nnz_; k++){
-            (*rhs_)[k][I] = value[k];
+    void get_value_matrix(int nn, int*BI, int* BJ, int I, int J, T* value){
+        for(int k=0; k<nn; k++){
+            value[k] = (*mat_)[BI[k]][BJ[k]][I][J];
         }
-        return 1;
     }
 
-    int solve(){
+    void reset_matrix(bool reset_structure){
+        if(reset_structure){
+            mat_ = std::make_unique<BCRSMat>(n_, n_, BCRSMat::random);
+        }else{
+            (*mat_) = 0.0;
+        }
+    }
+
+    void add_value_rhs(int nn, int* BI, int I, T* value){
+        for(int k=0; k<nn; k++){
+            (*rhs_)[BI[k]][I] = value[k];
+        }
+    }
+
+    void get_value_rhs(int nn, int* BI, int I, T* value){
+        for(int k=0; k<nn; k++){
+            value[k] = (*rhs_)[BI[k]][I];
+        }
+    }
+
+    void reset_rhs(){
+        (*rhs_) = 0.0;
+    }
+
+    void add_value_x(int nn, int* BI, int I, T* value){
+        for(int k=0; k<nn; k++){
+            (*x_)[BI[k]][I] = value[k];
+        }
+    }
+
+    void get_value_x(int nn, int* BI, int I, T* value){
+        for(int k=0; k<nn; k++){
+            value[k] = (*x_)[BI[k]][I];
+        }
+    }
+
+    void reset_x(){
+        (*x_) = 0.0;
+    }
+
+    void solve(){
         // TODO: add more preconditioner
         std::unique_ptr<Preconditioner> prec;
-        prec = std::make_unique<SeqILU>(*mat_, ilu_n_, prec_relax_, ilu_resort_);
+        prec = std::make_unique<SeqILU>(*mat_, ilu_n_, preconditioner_relax_, ilu_resort_);
 
         std::unique_ptr<IterativeSolver> solver;
         switch (solver_type_)
@@ -118,16 +168,14 @@ public:
         }
         
         solver->apply(*x_, *rhs_, res_);
-        return 1;
     }
 
-    int get_solution(T* x){
+    void get_solution(T* x){
         for(int k=0; k<n_; k++){
             for (int ii=0; ii<BS; ii++){
                 x[BS*k+ii] = (*x_)[k][ii];
             }
-        }
-        return 1;
+        }        
     }
 
     void set_solver_type(std::string type) {solver_type_ = string2solvertype(type);}
@@ -136,6 +184,13 @@ public:
         if(solver_type_ == SolverType::BICGSTAB) return "BiCGSTAB";
         if(solver_type_ == SolverType::RestartedGMRes) return "RestartedGMRes";
         return "BiCGSTAB";
+    }
+
+    void set_preconditioner_type(std::string type){preconditioner_type_ = string2preconditionertype(type);}
+
+    std::string get_preconditioner_type(){
+        if(preconditioner_type_ == PreconditionerType::ILU) return "ILU";
+        return "ILU";
     }
 
     void set_target_reduction(double target_reduction) {target_reduction_ = target_reduction; }
@@ -153,8 +208,8 @@ public:
     void set_ilu_resort(bool ilu_resort) {ilu_resort_=ilu_resort; }
     bool get_ilu_resort() {return ilu_resort_; }
 
-    void set_prec_relax(double prec_relax) {prec_relax_ = prec_relax; }
-    double get_prec_relax() {return prec_relax_; }
+    void set_preconditioner_relax(double preconditioner_relax) {preconditioner_relax_ = preconditioner_relax; }
+    double get_preconditioner_relax() {return preconditioner_relax_; }
 
     void set_gmres_restart(int gmres_restart) {gmres_restart_ = gmres_restart; }
     int get_gmres_restart() {return gmres_restart_; }
@@ -175,6 +230,13 @@ private:
         std::cout << "Unsupported solver " << type << ", using default solver BICGSTB" << std::endl;
         return SolverType::BICGSTAB;
     }
+
+    PreconditionerType string2preconditionertype(std::string type){
+        std::transform(type.begin(), type.end(), type.begin(), ::toupper); 
+        if (type == "ILU") return PreconditionerType::ILU;
+        std::cout << "Unsupported preconditioner " << type << ", using default ILU" << std::endl;
+        return PreconditionerType::ILU;
+    }
     
     std::unique_ptr<BCRSMat> mat_;
     std::unique_ptr<Operator> fop_;
@@ -194,16 +256,16 @@ private:
     int gmres_restart_;
     int verbose_;
 
-    // std::string prec_type_;
-    // int prec_iter_;
-    double prec_relax_;
+    PreconditionerType preconditioner_type_;
+    // int preconditioner_iter_;
+    double preconditioner_relax_;
     int ilu_n_;
     bool ilu_resort_;
 
 };
 
-// Helper to wrap DUNE_ISTL_Solver instances
-struct WrapDUNE_ISTL_Solver
+// Helper to wrap DuneIstlSolver instances
+struct WrapDuneIstlSolver
 {
   template<typename TypeWrapperT>
   void operator()(TypeWrapperT&& wrapped)
@@ -215,13 +277,23 @@ struct WrapDUNE_ISTL_Solver
 
     wrapped.method("print_matrix", &WrappedT::print_matrix)
      .method("print_rhs", &WrappedT::print_rhs)
+     .method("print_x", &WrappedT::print_x)
      .method("construct_matrix", &WrappedT::construct_matrix)
-     .method("set_value_matrix", &WrappedT::set_value_matrix)
-     .method("set_value_rhs", &WrappedT::set_value_rhs)
+     .method("add_value_matrix", &WrappedT::add_value_matrix)
+     .method("get_value_matrix", &WrappedT::get_value_matrix)
+     .method("reset_matrix", &WrappedT::reset_matrix)
+     .method("add_value_rhs", &WrappedT::add_value_rhs)
+     .method("get_value_rhs", &WrappedT::get_value_rhs)
+     .method("reset_rhs", &WrappedT::reset_rhs)
+     .method("add_value_x", &WrappedT::add_value_x)
+     .method("get_value_x", &WrappedT::get_value_x)
+     .method("reset_x", &WrappedT::reset_x)
      .method("solve", &WrappedT::solve)
      .method("get_solution", &WrappedT::get_solution)
      .method("set_solver_type", &WrappedT::set_solver_type)
      .method("get_solver_type", &WrappedT::get_solver_type)
+     .method("set_preconditioner_type", &WrappedT::set_preconditioner_type)
+     .method("get_preconditioner_type", &WrappedT::get_preconditioner_type)
      .method("set_target_reduction", &WrappedT::set_target_reduction)
      .method("get_target_reduction", &WrappedT::get_target_reduction)
      .method("set_max_iter", &WrappedT::set_max_iter)
@@ -232,8 +304,8 @@ struct WrapDUNE_ISTL_Solver
      .method("get_ilu_n", &WrappedT::get_ilu_n)
      .method("set_ilu_resort", &WrappedT::set_ilu_resort)
      .method("get_ilu_resort", &WrappedT::get_ilu_resort)
-     .method("set_prec_relax", &WrappedT::set_prec_relax)
-     .method("get_prec_relax", &WrappedT::get_prec_relax)
+     .method("set_preconditioner_relax", &WrappedT::set_preconditioner_relax)
+     .method("get_preconditioner_relax", &WrappedT::get_preconditioner_relax)
      .method("set_gmres_restart", &WrappedT::set_gmres_restart)
      .method("get_gmres_restart", &WrappedT::get_gmres_restart)
      .method("get_iterations", &WrappedT::get_iterations)
@@ -249,7 +321,7 @@ struct WrapDUNE_ISTL_Solver
 namespace jlcxx
 {
   template<typename T, int Val>
-  struct BuildParameterList<DUNE_ISTL_Solver<T, Val>>
+  struct BuildParameterList<DuneIstlSolver<T, Val>>
   {
     typedef ParameterList<T, std::integral_constant<int, Val>> type;
   };
@@ -258,16 +330,16 @@ namespace jlcxx
 JLCXX_MODULE define_julia_module(jlcxx::Module& types)
 {
   using namespace jlcxx;
-  types.add_type<Parametric<TypeVar<1>, TypeVar<2>>>("DUNE_ISTL_Solver")
-    .apply< DUNE_ISTL_Solver<double, 1>, 
-            DUNE_ISTL_Solver<double, 2>, 
-            DUNE_ISTL_Solver<double, 3>,
-            DUNE_ISTL_Solver<double, 4>,
-            DUNE_ISTL_Solver<float, 1>, 
-            DUNE_ISTL_Solver<float, 2>, 
-            DUNE_ISTL_Solver<float, 3>,
-            DUNE_ISTL_Solver<float, 4>
-           >(WrapDUNE_ISTL_Solver());
+  types.add_type<Parametric<TypeVar<1>, TypeVar<2>>>("DuneIstlSolver")
+    .apply< DuneIstlSolver<double, 1>, 
+            DuneIstlSolver<double, 2>, 
+            DuneIstlSolver<double, 3>,
+            DuneIstlSolver<double, 4>,
+            DuneIstlSolver<float, 1>, 
+            DuneIstlSolver<float, 2>, 
+            DuneIstlSolver<float, 3>,
+            DuneIstlSolver<float, 4>
+           >(WrapDuneIstlSolver());
 }
 
 
