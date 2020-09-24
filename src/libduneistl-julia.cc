@@ -9,8 +9,6 @@
 #include <dune/istl/solvers.hh>
 #include <dune/istl/preconditioners.hh>
 
-#include<bits/stdc++.h> 
-
 #include "jlcxx/jlcxx.hpp"
 
 enum class SolverType {BICGSTAB, RestartedGMRes};
