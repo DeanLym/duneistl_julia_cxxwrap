@@ -89,7 +89,7 @@ public:
         BJ_.reset(new int[nnz]);
 
         for(int i=0; i<nnz; i++){
-            mat_->addindex(BI[i], BJ[i]);
+            mat_->addindex(BI[i]-1, BJ[i]-1);
             BI_[i] = BI[i];
             BJ_[i] = BJ[i];
         }
@@ -98,13 +98,13 @@ public:
 
     void add_value_matrix(int nn, int* BI, int* BJ, int I, int J, T* value){
         for(int k=0; k<nn; k++){
-            (*mat_)[BI[k]][BJ[k]][I][J] += value[k];
+            (*mat_)[BI[k]-1][BJ[k]-1][I-1][J-1] += value[k];
         }
     }
 
     void get_value_matrix(int nn, int*BI, int* BJ, int I, int J, T* value){
         for(int k=0; k<nn; k++){
-            value[k] = (*mat_)[BI[k]][BJ[k]][I][J];
+            value[k] = (*mat_)[BI[k]-1][BJ[k]-1][I-1][J-1];
         }
     }
 
@@ -118,13 +118,13 @@ public:
 
     void add_value_rhs(int nn, int* BI, int I, T* value){
         for(int k=0; k<nn; k++){
-            (*rhs_)[BI[k]][I] = value[k];
+            (*rhs_)[BI[k]-1][I-1] = value[k];
         }
     }
 
     void get_value_rhs(int nn, int* BI, int I, T* value){
         for(int k=0; k<nn; k++){
-            value[k] = (*rhs_)[BI[k]][I];
+            value[k] = (*rhs_)[BI[k]-1][I-1];
         }
     }
 
@@ -134,13 +134,13 @@ public:
 
     void add_value_x(int nn, int* BI, int I, T* value){
         for(int k=0; k<nn; k++){
-            (*x_)[BI[k]][I] = value[k];
+            (*x_)[BI[k]-1][I-1] = value[k];
         }
     }
 
     void get_value_x(int nn, int* BI, int I, T* value){
         for(int k=0; k<nn; k++){
-            value[k] = (*x_)[BI[k]][I];
+            value[k] = (*x_)[BI[k]-1][I-1];
         }
     }
 
