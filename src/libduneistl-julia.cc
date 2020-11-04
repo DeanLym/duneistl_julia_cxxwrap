@@ -118,7 +118,7 @@ public:
 
     void add_value_rhs(int nn, int* BI, int I, T* value){
         for(int k=0; k<nn; k++){
-            (*rhs_)[BI[k]-1][I-1] = value[k];
+            (*rhs_)[BI[k]-1][I-1] += value[k];
         }
     }
 
@@ -192,6 +192,8 @@ public:
         if(preconditioner_type_ == PreconditionerType::ILU) return "ILU";
         return "ILU";
     }
+
+    int get_n() {return n_;}
 
     void set_target_reduction(double target_reduction) {target_reduction_ = target_reduction; }
     double get_target_reduction() {return target_reduction_; }
@@ -276,6 +278,7 @@ struct WrapDuneIstlSolver
     wrapped.module().method("get_tmp", [](const WrappedT& w) { return w.tmp_; });
 
     wrapped.method("print_matrix", &WrappedT::print_matrix)
+     .method("get_n", &WrappedT::get_n)
      .method("print_rhs", &WrappedT::print_rhs)
      .method("print_x", &WrappedT::print_x)
      .method("construct_matrix", &WrappedT::construct_matrix)
@@ -317,6 +320,9 @@ struct WrapDuneIstlSolver
   }
 };
 
+// TODO:
+// get_n
+// get_nnz
 
 namespace jlcxx
 {
